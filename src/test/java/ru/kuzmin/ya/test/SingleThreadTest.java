@@ -8,7 +8,6 @@ package ru.kuzmin.ya.test;
 import java.util.Calendar;
 import org.junit.Test;
 import ru.kuzmin.ya.EventCounter;
-import static org.junit.Assert.assertEquals;
 import org.junit.Before;
 import ru.kuzmin.ya.Period;
 import static org.junit.Assert.assertEquals;
@@ -24,6 +23,7 @@ public class SingleThreadTest {
 
 	@Before
 	public void beforeTest() {
+		// Reset all counter's values
 		COUNTER.reset();
 		assertEquals(0, COUNTER.countEvents(Period.MINUTE));
 		assertEquals(0, COUNTER.countEvents(Period.HOUR));
@@ -32,6 +32,7 @@ public class SingleThreadTest {
 
 	@Test
 	public void basicTest() {
+		// Sequential events registration
 		for (long i = 0; i < numberEvents; i++) {
 			COUNTER.register();
 		}
@@ -42,11 +43,13 @@ public class SingleThreadTest {
 
 	@Test
 	public void timeShiftTest() {
-		Long timeShift = 120 * 1000l;
-		Calendar calendar = Calendar.getInstance();
+		// Setting timeShift value in milliseconds
+		Long timeShift = 2 * 60 * 1000l;
 		for (int i = 0; i < numberEvents; i++) {
-			Long currentTime = calendar.getTimeInMillis();
+			Long currentTime = Calendar.getInstance().getTimeInMillis();
+			// Registration current event
 			COUNTER.register(currentTime);
+			// Registration shifted event
 			COUNTER.register(currentTime - timeShift);
 		}
 		assertEquals(numberEvents, COUNTER.countEvents(Period.MINUTE));
