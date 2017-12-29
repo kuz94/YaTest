@@ -1,14 +1,10 @@
 package ru.kuzmin.ya;
 
 import java.util.Calendar;
+import java.util.EnumMap;
 import java.util.Map;
-import java.util.NavigableMap;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * A {@code EventCounter} provides statistic about last registered events.
@@ -17,8 +13,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public class EventCounter {
 
-	private final NavigableMap<Period, EventPeriodCounter> eventPeriodCounters;
-	private final ReadWriteLock lock = new ReentrantReadWriteLock();
+	private final Map<Period, EventPeriodCounter> eventPeriodCounters = new EnumMap<>(Period.class);
 
 	private static class EventConterHolder {
 
@@ -39,9 +34,6 @@ public class EventCounter {
 	 * all available time {@code Period}.
 	 */
 	private EventCounter() {
-		eventPeriodCounters = new TreeMap<>(
-				  (period1, period2) -> period1.getPeriod().compareTo(period2.getPeriod())
-		);
 		for (Period period : Period.values()) {
 			eventPeriodCounters.put(period, new EventPeriodCounter(period));
 		}
@@ -49,33 +41,19 @@ public class EventCounter {
 	}
 
 	/**
-	 * Initiates scheduled tasks which collect all expired events from an
-	 * {@code EventPeriodCounter} with one time period and merge this events with
-	 * statistic in {@code EventPeriodCounter} with longer time period.
+	 * Initiates scheduled tasks which remove all expired events from each
+	 * {@code EventPeriodCounter} instance.
 	 */
 	private void initExpiredEventsTasks() {
 		Timer timer = new Timer(true);
-		for (Period period : Period.values()) {
-			Period higherPeriod = eventPeriodCounters.higherKey(period);
-			EventPeriodCounter higherStat = higherPeriod != null
-					  ? eventPeriodCounters.get(higherPeriod)
-					  : null;
+		eventPeriodCounters.entrySet().stream().forEach((entry) -> {
 			timer.schedule(new TimerTask() {
 				@Override
 				public void run() {
-					lock.writeLock().lock();
-					try {
-						EventPeriodCounter currentStat = eventPeriodCounters.get(period);
-						Map<Long, AtomicLong> expiredStatistic = currentStat.removeExpiredStatistic();
-						if (higherStat != null) {
-							higherStat.mergeExternalStatistic(expiredStatistic);
-						}
-					} finally {
-						lock.writeLock().unlock();
-					}
+					entry.getValue().removeExpiredStatistic();
 				}
-			}, period.getPeriod(), period.getPeriod());
-		}
+			}, entry.getKey().getPeriod(), entry.getKey().getPeriod());
+		});
 	}
 
 	/**
@@ -100,12 +78,7 @@ public class EventCounter {
 		if (eventTime < 0) {
 			throw new IllegalArgumentException("Argument must be greater than 0");
 		}
-		lock.readLock().lock();
-		try {
-			eventPeriodCounters.firstEntry().getValue().register(eventTime);
-		} finally {
-			lock.readLock().unlock();
-		}
+		eventPeriodCounters.values().stream().forEach((counter) -> counter.register(eventTime));
 	}
 
 	/**
@@ -129,13 +102,6 @@ public class EventCounter {
 		if (period == null) {
 			throw new NullPointerException("Period is null");
 		}
-		lock.readLock().lock();
-		try {
-			return eventPeriodCounters.headMap(period, true).values().stream()
-					  .mapToLong((counter) -> counter.getActualStatistic(period.getPeriod()))
-					  .sum();
-		} finally {
-			lock.readLock().unlock();
-		}
+		return eventPeriodCounters.get(period).getActualStatistic();
 	}
 }
